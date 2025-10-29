@@ -8,6 +8,8 @@ function App() {
   const canvasRef = useRef(null);
   const [selectedObject, setSelectedObject] = useState(null);
   const [objects, setObjects] = useState([]);
+  const [gridSize, setGridSize] = useState(0.5);
+  const [extrusionHeight, setExtrusionHeight] = useState(1.0);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
   const rendererRef = useRef(null);
@@ -23,7 +25,7 @@ function App() {
   const [startPoint, setStartPoint] = useState(null);
   const [currentSketch, setCurrentSketch] = useState(null);
   const [snapToGrid, setSnapToGrid] = useState(true);
-  const gridSize = 0.5; // Grid size for snapping
+  // Using the gridSize state variable for snapping
 
   // Initialize Three.js scene
   useEffect(() => {
@@ -316,6 +318,84 @@ function App() {
     }
   };
   
+  // Extrude a 2D shape into 3D
+  const extrudeShape = (shapeMesh, height = 1.0) => {
+    if (!shapeMesh || !sceneRef.current) return null;
+    
+    let geometry;
+    
+    if (shapeMesh.geometry.type === 'ShapeGeometry') {
+      // For rectangles and other shapes
+      const shape = new THREE.Shape();
+      shape.moveTo(-0.5, -0.5);
+      shape.lineTo(0.5, -0.5);
+      shape.lineTo(0.5, 0.5);
+      shape.lineTo(-0.5, 0.5);
+      shape.lineTo(-0.5, -0.5);
+      
+      const extrudeSettings = {
+        steps: 1,
+        depth: height,
+        bevelEnabled: false
+      };
+      
+      geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+      // Scale the geometry to match the original shape's dimensions
+      geometry.scale(shapeMesh.scale.x * 2, shapeMesh.scale.z * 2, 1);
+    } else if (shapeMesh.geometry.type === 'CircleGeometry') {
+      // For circles
+      const radius = shapeMesh.geometry.parameters.radius;
+      const segments = shapeMesh.geometry.parameters.segments;
+      geometry = new THREE.CylinderGeometry(radius, radius, height, segments, 1, false);
+    } else {
+      return null; // Unsupported shape type
+    }
+    
+    // Create material with the same color as the original shape
+    const material = new THREE.MeshPhongMaterial({
+      color: shapeMesh.material.color,
+      side: THREE.DoubleSide,
+      flatShading: true
+    });
+    
+    // Create the 3D mesh
+    const mesh = new THREE.Mesh(geometry, material);
+    
+    // Position the extruded shape
+    mesh.position.copy(shapeMesh.position);
+    mesh.position.y = height / 2; // Center vertically
+    
+    // Add to scene
+    sceneRef.current.add(mesh);
+    
+    // Add to objects array
+    setObjects(prev => [...prev, mesh]);
+    
+    return mesh;
+  };
+  
+  // Extrude the selected object
+  const handleExtrude = () => {
+    if (!selectedObject) return;
+    
+    // Check if the selected object is a 2D shape
+    const is2DShape = selectedObject.geometry && 
+                     (selectedObject.geometry.type === 'ShapeGeometry' || 
+                      selectedObject.geometry.type === 'CircleGeometry');
+    
+    if (is2DShape) {
+      const extrudedMesh = extrudeShape(selectedObject, extrusionHeight);
+      if (extrudedMesh) {
+        // Select the new extruded mesh
+        setSelectedObject(extrudedMesh);
+        
+        // Remove the original 2D shape
+        sceneRef.current.remove(selectedObject);
+        setObjects(prev => prev.filter(obj => obj.uuid !== selectedObject.uuid));
+      }
+    }
+  };
+  
   // Handle mouse up for sketching
   const handleMouseUp = () => {
     if (!isDrawing || !startPoint || !sketchMode) {
@@ -329,6 +409,7 @@ function App() {
     // Keep the current sketch as a permanent object
     if (currentSketch) {
       currentSketch.material.opacity = 0.3; // Make it less prominent
+      currentSketch.userData.is2DShape = true; // Mark as 2D shape for later reference
       setObjects(prev => [...prev, currentSketch]);
       setCurrentSketch(null);
     }
@@ -550,6 +631,30 @@ function App() {
                   <span className="toggle-slider"></span>
                   <span>Snap to Grid</span>
                 </label>
+              </div>
+            </div>
+          </div>
+          
+          <div className="sidebar-section">
+            <h3>2D to 3D</h3>
+            <div className="toolbar-buttons vertical">
+              <button 
+                onClick={handleExtrude}
+                disabled={!selectedObject || !selectedObject.userData?.is2DShape}
+              >
+                Extrude to 3D
+              </button>
+              <div className="property-control">
+                <label>Height:</label>
+                <input 
+                  type="range" 
+                  min="0.1" 
+                  max="5" 
+                  step="0.1" 
+                  value={extrusionHeight}
+                  onChange={(e) => setExtrusionHeight(parseFloat(e.target.value))}
+                />
+                <span>{extrusionHeight.toFixed(1)}</span>
               </div>
             </div>
           </div>
