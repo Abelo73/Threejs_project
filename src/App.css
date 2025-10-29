@@ -20,12 +20,14 @@ body, html, #root {
 }
 
 .toolbar {
-  padding: 1rem;
-  background-color: #252526;
-  border-bottom: 1px solid #333;
+  padding: 0.75rem 1.25rem;
+  background-color: #2d2d2d;
+  border-bottom: 1px solid #3c3c3c;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  align-items: flex-start;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 .toolbar h2 {
@@ -33,22 +35,94 @@ body, html, #root {
   color: #fff;
 }
 
+.toolbar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.toolbar-section h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: #d0d0d0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .toolbar-buttons {
   display: flex;
   gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 button {
   padding: 0.5rem 1rem;
-  background-color: #0e639c;
-  color: white;
-  border: none;
+  background-color: #3a3a3a;
+  color: #f0f0f0;
+  border: 1px solid #4a4a4a;
   border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s;
+  font-size: 0.9rem;
+  font-weight: 500;
+  position: relative;
+  min-width: 80px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 button:hover {
+  background-color: #3c3c3c;
+  border-color: #4d4d4d;
+}
+
+button.active {
+  background-color: #0e639c;
+  border-color: #4a9ed8;
+  color: white;
+  box-shadow: 0 0 0 2px rgba(74, 158, 216, 0.3);
+}
+
+/* Tooltip styles */
+.tooltip {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #333;
+  color: white;
+  padding: 4px 8px;
+  border-radius: 3px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s;
+  margin-bottom: 5px;
+  z-index: 100;
+}
+
+button:hover .tooltip {
+  opacity: 1;
+}
+
+/* Transform mode indicators */
+.toolbar-section.transform-modes {
+  margin-left: auto;
+}
+
+.toolbar-section.transform-modes .toolbar-buttons {
+  gap: 0.25rem;
+}
+
+.toolbar-section.transform-modes button {
+  min-width: 60px;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.8rem;
+}
+
+button.active:hover {
   background-color: #1177bb;
 }
 
@@ -78,6 +152,8 @@ button:hover {
   padding: 1rem;
   border-radius: 4px;
   margin-top: 1rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
 }
 
 .properties-panel div {

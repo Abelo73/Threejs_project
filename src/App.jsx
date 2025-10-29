@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { TransformControls } from 'three-stdlib';
 import './App.css';
 
 function App() {
@@ -13,6 +14,8 @@ function App() {
   const controlsRef = useRef(null);
   const raycaster = useRef(new THREE.Raycaster());
   const mouse = useRef(new THREE.Vector2());
+  const transformControlsRef = useRef(null);
+  const [transformMode, setTransformMode] = useState('translate'); // 'translate', 'rotate', or 'scale'
 
   // Initialize Three.js scene
   useEffect(() => {
@@ -48,7 +51,89 @@ function App() {
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
+    controls.screenSpacePanning = true;
     controlsRef.current = controls;
+
+    // Add transform controls
+    const transformControls = new TransformControls(camera, renderer.domElement);
+    transformControls.setMode('translate');
+    transformControls.setSize(0.8);
+    transformControls.visible = false;
+    scene.add(transformControls);
+    transformControlsRef.current = transformControls;
+
+    // Disable orbit controls when transform controls are in use
+    transformControls.addEventListener('dragging-changed', (event) => {
+      controls.enabled = !event.value;
+    });
+
+    // Highlight selected object
+    const highlightSelectedObject = (object) => {
+      // Remove highlight from previously selected object
+      if (selectedObject) {
+        selectedObject.material.emissive.set(0x000000);
+      }
+      
+      // Apply highlight to newly selected object
+      if (object) {
+        object.material.emissive.set(0x333333);
+        object.material.emissiveIntensity = 0.5;
+        object.material.needsUpdate = true;
+      }
+    };
+
+    // Update object properties when transformed
+    const updateObjectTransform = () => {
+      if (selectedObject) {
+        // Create a new object with updated properties
+        const updatedObject = {
+          ...selectedObject,
+          position: selectedObject.position.clone(),
+          rotation: selectedObject.rotation.clone(),
+          scale: selectedObject.scale.clone(),
+          userData: { ...selectedObject.userData }
+        };
+        
+        // Update the scene objects array
+        setObjects(prevObjects => 
+          prevObjects.map(obj => 
+            obj.userData.id === selectedObject.userData.id ? updatedObject : obj
+          )
+        );
+        
+        // Update the selected object reference
+        setSelectedObject(updatedObject);
+      }
+    };
+
+    // Handle object selection
+    const handleObjectSelect = (object) => {
+      if (selectedObject === object) return;
+      
+      // Update highlight
+      highlightSelectedObject(object);
+      
+      // Update transform controls
+      if (object) {
+        transformControlsRef.current.attach(object);
+        transformControlsRef.current.visible = true;
+        setSelectedObject(object);
+      } else {
+        transformControlsRef.current.detach();
+        transformControlsRef.current.visible = false;
+        setSelectedObject(null);
+      }
+    };
+
+    // Listen for transform changes
+    transformControls.addEventListener('change', updateObjectTransform);
+    transformControls.addEventListener('mouseUp', updateObjectTransform);
+    
+    // Set transform mode
+    const setTransformMode = (mode) => {
+      transformControlsRef.current.setMode(mode);
+      setCurrentTransformMode(mode);
+    };
 
     // Add grid helper
     const gridHelper = new THREE.GridHelper(20, 20);
@@ -92,7 +177,7 @@ function App() {
 
   // Handle object selection
   const handleCanvasClick = (event) => {
-    if (!cameraRef.current || !sceneRef.current) return;
+    if (!cameraRef.current || !sceneRef.current || !transformControlsRef.current) return;
 
     // Calculate mouse position in normalized device coordinates
     mouse.current.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -108,10 +193,12 @@ function App() {
     );
 
     if (intersects.length > 0) {
-      // Find the first object that's not a helper
+      // Find the first object that's not a helper or transform controls
       const selected = intersects.find(
         (obj) => !(obj.object instanceof THREE.GridHelper) && 
-                 !(obj.object instanceof THREE.AxesHelper)
+                 !(obj.object instanceof THREE.AxesHelper) &&
+                 !(obj.object instanceof TransformControls) &&
+                 !(obj.object.parent instanceof TransformControls)
       );
       
       if (selected) {
@@ -124,25 +211,86 @@ function App() {
     }
   };
 
-  // Add a new 3D object
-  const addObject = (type) => {
-    if (!sceneRef.current) return;
-
-    let geometry, material, mesh;
+  // Handle object selection
+  const handleObjectSelect = (object) => {
+    if (selectedObject === object) return;
     
-    // Define colors for each shape type
-    const colors = {
-      box: 0x4caf50,    // Green
-      sphere: 0x2196f3,  // Blue
-      cylinder: 0xff9800 // Orange
-    };
+    // Update highlight
+    highlightSelectedObject(object);
+    
+    // Update transform controls and handle selection highlighting
+    useEffect(() => {
+      if (!transformControlsRef.current) return;
+      
+      let originalMaterials = [];
+      
+      const cleanup = () => {
+        // Restore original materials
+        originalMaterials.forEach(({ object, emissive, emissiveIntensity }) => {
+          if (object.material) {
+            object.material.emissive.copy(emissive);
+            object.material.emissiveIntensity = emissiveIntensity;
+            object.material.needsUpdate = true;
+          }
+        });
+        originalMaterials = [];
+      };
+      
+      if (object) {
+        // Store original materials for cleanup
+        object.traverse((child) => {
+          if (child.material) {
+            // Handle both single material and array of materials
+            const materials = Array.isArray(child.material) 
+              ? child.material 
+              : [child.material];
+              
+            materials.forEach((material) => {
+              originalMaterials.push({
+                object: child,
+                emissive: material.emissive.clone(),
+                emissiveIntensity: material.emissiveIntensity
+              });
+              
+              // Apply highlight
+              material.emissive.set(0x444444);
+              material.emissiveIntensity = 0.7;
+              material.needsUpdate = true;
+            });
+          }
+        });
+        
+        // Update transform controls
+        transformControlsRef.current.attach(object);
+        transformControlsRef.current.visible = true;
+        
+        // Ensure transform controls are on top
+        transformControlsRef.current.renderOrder = 999;
+        
+        return cleanup;
+      } else {
+        transformControlsRef.current.detach();
+        transformControlsRef.current.visible = false;
+      }
+    }, [selectedObject, transformMode]);
+    
+    // Update transform controls
+    if (object) {
+      transformControlsRef.current.attach(object);
+      transformControlsRef.current.visible = true;
+      setSelectedObject(object);
+    } else {
+      transformControlsRef.current.detach();
+      transformControlsRef.current.visible = false;
+      setSelectedObject(null);
+    }
+  };
 
-    material = new THREE.MeshStandardMaterial({
-      color: colors[type] || 0x9e9e9e, // Default to gray if type not found
-      roughness: 0.7,
-      metalness: 0.3,
-    });
-
+  // Add object
+  const addObject = (type) => {
+    let geometry;
+    const material = new THREE.MeshPhongMaterial({ color: 0xffffff });
+    
     switch (type) {
       case 'box':
         geometry = new THREE.BoxGeometry(1, 1, 1);
@@ -157,7 +305,7 @@ function App() {
         return;
     }
 
-    mesh = new THREE.Mesh(geometry, material);
+    const mesh = new THREE.Mesh(geometry, material);
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     
@@ -176,10 +324,39 @@ function App() {
     <div className="app">
       <div className="toolbar">
         <h2>3D Editor</h2>
-        <div className="toolbar-buttons">
-          <button onClick={() => addObject('box')}>Add Box</button>
-          <button onClick={() => addObject('sphere')}>Add Sphere</button>
-          <button onClick={() => addObject('cylinder')}>Add Cylinder</button>
+        <div className="toolbar-section">
+          <h3>Shapes</h3>
+          <div className="toolbar-buttons">
+            <button onClick={() => addObject('box')}>Add Box</button>
+            <button onClick={() => addObject('sphere')}>Add Sphere</button>
+            <button onClick={() => addObject('cylinder')}>Add Cylinder</button>
+          </div>
+        </div>
+        <div className="toolbar-section transform-modes">
+          <h3>Transform Modes</h3>
+          <div className="toolbar-buttons">
+            <button 
+              className={transformMode === 'translate' ? 'active' : ''}
+              onClick={() => setTransformMode('translate')}
+            >
+              Move
+              <span className="tooltip">Move (G) - Drag to position objects</span>
+            </button>
+            <button 
+              className={transformMode === 'rotate' ? 'active' : ''}
+              onClick={() => setTransformMode('rotate')}
+            >
+              Rotate
+              <span className="tooltip">Rotate (R) - Click and drag to rotate</span>
+            </button>
+            <button 
+              className={transformMode === 'scale' ? 'active' : ''}
+              onClick={() => setTransformMode('scale')}
+            >
+              Scale
+              <span className="tooltip">Scale (S) - Drag to resize objects</span>
+            </button>
+          </div>
         </div>
       </div>
       
