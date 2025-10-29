@@ -16,6 +16,14 @@ function App() {
   const mouse = useRef(new THREE.Vector2());
   const transformControlsRef = useRef(null);
   const [transformMode, setTransformMode] = useState('translate'); // 'translate', 'rotate', or 'scale'
+  
+  // Sketching mode state
+  const [sketchMode, setSketchMode] = useState(null); // 'rectangle', 'circle', or null
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [startPoint, setStartPoint] = useState(null);
+  const [currentSketch, setCurrentSketch] = useState(null);
+  const [snapToGrid, setSnapToGrid] = useState(true);
+  const gridSize = 0.5; // Grid size for snapping
 
   // Initialize Three.js scene
   useEffect(() => {
@@ -175,9 +183,161 @@ function App() {
     };
   }, []);
 
-  // Handle object selection
+  // Snap a value to the grid if snapToGrid is enabled
+  const snapValue = (value) => {
+    if (!snapToGrid) return value;
+    return Math.round(value / gridSize) * gridSize;
+  };
+
+  // Get intersection point on XZ plane
+  const getIntersectionPoint = (event) => {
+    if (!cameraRef.current || !sceneRef.current) return null;
+    
+    // Calculate mouse position in normalized device coordinates
+    mouse.current.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.current.y = -(event.clientY / window.innerHeight) * 2 + 1;
+    
+    // Create a plane at y=0 for XZ plane intersection
+    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(mouse.current, cameraRef.current);
+    
+    const intersection = new THREE.Vector3();
+    raycaster.ray.intersectPlane(plane, intersection);
+    
+    // Snap to grid if enabled
+    if (snapToGrid) {
+      intersection.x = snapValue(intersection.x);
+      intersection.z = snapValue(intersection.z);
+    }
+    
+    return intersection;
+  };
+
+  // Create a rectangle preview
+  const createRectangle = (start, end) => {
+    if (!sceneRef.current) return;
+    
+    // Remove previous preview if it exists
+    if (currentSketch) {
+      sceneRef.current.remove(currentSketch);
+    }
+    
+    const width = Math.abs(end.x - start.x);
+    const depth = Math.abs(end.z - start.z);
+    const centerX = (start.x + end.x) / 2;
+    const centerZ = (start.z + end.z) / 2;
+    
+    const shape = new THREE.Shape();
+    shape.moveTo(-width/2, -depth/2);
+    shape.lineTo(width/2, -depth/2);
+    shape.lineTo(width/2, depth/2);
+    shape.lineTo(-width/2, depth/2);
+    shape.lineTo(-width/2, -depth/2);
+    
+    const geometry = new THREE.ShapeGeometry(shape);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x00ff00,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.5
+    });
+    
+    const rectangle = new THREE.Mesh(geometry, material);
+    rectangle.position.set(centerX, 0, centerZ);
+    rectangle.rotation.x = -Math.PI / 2; // Rotate to XZ plane
+    
+    sceneRef.current.add(rectangle);
+    setCurrentSketch(rectangle);
+    return rectangle;
+  };
+  
+  // Create a circle preview
+  const createCircle = (center, radius) => {
+    if (!sceneRef.current) return;
+    
+    // Remove previous preview if it exists
+    if (currentSketch) {
+      sceneRef.current.remove(currentSketch);
+    }
+    
+    const segments = 32;
+    const geometry = new THREE.CircleGeometry(radius, segments);
+    const material = new THREE.MeshBasicMaterial({
+      color: 0x00aaff,
+      side: THREE.DoubleSide,
+      transparent: true,
+      opacity: 0.5
+    });
+    
+    const circle = new THREE.Mesh(geometry, material);
+    circle.position.set(center.x, 0, center.z);
+    circle.rotation.x = -Math.PI / 2; // Rotate to XZ plane
+    
+    sceneRef.current.add(circle);
+    setCurrentSketch(circle);
+    return circle;
+  };
+
+  // Handle mouse down for sketching
+  const handleMouseDown = (event) => {
+    if (!sketchMode) {
+      // If not in sketch mode, handle object selection
+      handleCanvasClick(event);
+      return;
+    }
+    
+    const point = getIntersectionPoint(event);
+    if (!point) return;
+    
+    setIsDrawing(true);
+    setStartPoint(point);
+    
+    // Create initial sketch
+    if (sketchMode === 'rectangle') {
+      createRectangle(point, point);
+    } else if (sketchMode === 'circle') {
+      createCircle(point, 0.1);
+    }
+  };
+  
+  // Handle mouse move for sketching
+  const handleMouseMove = (event) => {
+    if (!isDrawing || !startPoint || !sketchMode) return;
+    
+    const point = getIntersectionPoint(event);
+    if (!point) return;
+    
+    if (sketchMode === 'rectangle') {
+      createRectangle(startPoint, point);
+    } else if (sketchMode === 'circle') {
+      const radius = startPoint.distanceTo(point);
+      createCircle(startPoint, radius);
+    }
+  };
+  
+  // Handle mouse up for sketching
+  const handleMouseUp = () => {
+    if (!isDrawing || !startPoint || !sketchMode) {
+      setIsDrawing(false);
+      return;
+    }
+    
+    // Reset drawing state
+    setIsDrawing(false);
+    
+    // Keep the current sketch as a permanent object
+    if (currentSketch) {
+      currentSketch.material.opacity = 0.3; // Make it less prominent
+      setObjects(prev => [...prev, currentSketch]);
+      setCurrentSketch(null);
+    }
+  };
+
+  // Handle canvas click (for object selection when not in sketch mode)
   const handleCanvasClick = (event) => {
     if (!cameraRef.current || !sceneRef.current || !transformControlsRef.current) return;
+    if (sketchMode) return; // Skip object selection in sketch mode
 
     // Calculate mouse position in normalized device coordinates
     mouse.current.x = (event.clientX / window.innerWidth) * 2 - 1;
@@ -198,7 +358,10 @@ function App() {
         (obj) => !(obj.object instanceof THREE.GridHelper) && 
                  !(obj.object instanceof THREE.AxesHelper) &&
                  !(obj.object instanceof TransformControls) &&
-                 !(obj.object.parent instanceof TransformControls)
+                 !(obj.object.parent instanceof TransformControls) &&
+                 !(obj.object instanceof THREE.Mesh && 
+                   (obj.object.geometry.type === 'ShapeGeometry' || 
+                    obj.object.geometry.type === 'CircleGeometry'))
       );
       
       if (selected) {
@@ -325,7 +488,7 @@ function App() {
       <div className="toolbar">
         <h2>3D Editor</h2>
         <div className="toolbar-section">
-          <h3>Shapes</h3>
+          <h3>3D Shapes</h3>
           <div className="toolbar-buttons">
             <button onClick={() => addObject('box')}>Add Box</button>
             <button onClick={() => addObject('sphere')}>Add Sphere</button>
@@ -362,37 +525,81 @@ function App() {
       
       <div className="main-content">
         <div className="sidebar">
-          <h3>Properties</h3>
-          {selectedObject && (
-            <div className="properties-panel">
-              <div>Type: {selectedObject.type}</div>
-              <div>
-                Position: 
-                {`X: ${selectedObject.position.x.toFixed(2)}, `}
-                {`Y: ${selectedObject.position.y.toFixed(2)}, `}
-                {`Z: ${selectedObject.position.z.toFixed(2)}`}
-              </div>
-              <div>
-                Rotation: 
-                {`X: ${selectedObject.rotation.x.toFixed(2)}, `}
-                {`Y: ${selectedObject.rotation.y.toFixed(2)}, `}
-                {`Z: ${selectedObject.rotation.z.toFixed(2)}`}
-              </div>
-              <div>
-                Scale: 
-                {`X: ${selectedObject.scale.x.toFixed(2)}, `}
-                {`Y: ${selectedObject.scale.y.toFixed(2)}, `}
-                {`Z: ${selectedObject.scale.z.toFixed(2)}`}
+          <div className="sidebar-section">
+            <h3>2D Sketching</h3>
+            <div className="toolbar-buttons vertical">
+              <button 
+                className={sketchMode === 'rectangle' ? 'active' : ''}
+                onClick={() => setSketchMode(sketchMode === 'rectangle' ? null : 'rectangle')}
+              >
+                Rectangle
+              </button>
+              <button 
+                className={sketchMode === 'circle' ? 'active' : ''}
+                onClick={() => setSketchMode(sketchMode === 'circle' ? null : 'circle')}
+              >
+                Circle
+              </button>
+              <div className="toggle-container">
+                <label className="toggle-switch">
+                  <input 
+                    type="checkbox" 
+                    checked={snapToGrid}
+                    onChange={(e) => setSnapToGrid(e.target.checked)}
+                  />
+                  <span className="toggle-slider"></span>
+                  <span>Snap to Grid</span>
+                </label>
               </div>
             </div>
-          )}
-        </div>
+          </div>
+          
+          <div className="sidebar-section">
+            <h3>Properties</h3>
+            {selectedObject ? (
+              <div className="properties-panel">
+                <div>Type: {selectedObject.type}</div>
+                <div>
+                  Position: 
+                  {`X: ${selectedObject.position.x.toFixed(2)}, `}
+                  {`Y: ${selectedObject.position.y.toFixed(2)}, `}
+                  {`Z: ${selectedObject.position.z.toFixed(2)}`}
+                </div>
+                <div>
+                  Rotation: 
+                  {`X: ${selectedObject.rotation.x.toFixed(2)}, `}
+                  {`Y: ${selectedObject.rotation.y.toFixed(2)}, `}
+                  {`Z: ${selectedObject.rotation.z.toFixed(2)}`}
+                </div>
+                <div>
+                  Scale: 
+                  {`X: ${selectedObject.scale.x.toFixed(2)}, `}
+                  {`Y: ${selectedObject.scale.y.toFixed(2)}, `}
+                  {`Z: ${selectedObject.scale.z.toFixed(2)}`}
+                </div>
+              </div>
+            ) : (
+              <div className="properties-panel empty">
+                Select an object to view properties
+              </div>
+            )}
+          </div>
+        </div> {/* Close sidebar div */}
         
         <div className="canvas-container">
           <canvas 
             ref={canvasRef} 
-            onClick={handleCanvasClick}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+            style={{ cursor: sketchMode ? 'crosshair' : 'default' }}
           />
+          {sketchMode && (
+            <div className="sketch-mode-indicator">
+              Sketch Mode: {sketchMode} {snapToGrid ? '(Snap to Grid)' : ''}
+            </div>
+          )}
         </div>
       </div>
     </div>

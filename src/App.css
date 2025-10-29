@@ -133,11 +133,26 @@ button.active:hover {
 }
 
 .sidebar {
-  width: 300px;
+  width: 250px;
   background-color: #252526;
   border-right: 1px solid #333;
-  padding: 1rem;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
+}
+
+.sidebar-section {
+  padding: 1rem;
+  border-bottom: 1px solid #333;
+}
+
+.sidebar-section h3 {
+  color: #e0e0e0;
+  margin: 0 0 0.75rem 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 .sidebar h3 {
@@ -149,11 +164,16 @@ button.active:hover {
 
 .properties-panel {
   background-color: #2d2d2d;
-  padding: 1rem;
+  padding: 0.75rem;
   border-radius: 4px;
-  margin-top: 1rem;
-  font-size: 0.9rem;
+  font-size: 0.85rem;
   line-height: 1.5;
+}
+
+.properties-panel.empty {
+  color: #888;
+  text-align: center;
+  padding: 1rem 0.5rem;
 }
 
 .properties-panel div {
@@ -181,4 +201,94 @@ canvas {
 /* Highlight selected object */
 canvas:focus {
   outline: none;
+}
+
+/* Sketch mode indicator */
+.sketch-mode-indicator {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: rgba(0, 0, 0, 0.7);
+  color: #fff;
+  padding: 5px 15px;
+  border-radius: 15px;
+  font-size: 0.9rem;
+  pointer-events: none;
+  z-index: 10;
+  backdrop-filter: blur(5px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Vertical button layout for sidebar */
+.toolbar-buttons.vertical {
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.toolbar-buttons.vertical button {
+  width: 100%;
+  justify-content: center;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+}
+
+/* Toggle switch for snap to grid */
+.toggle-container {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #333;
+}
+
+.toggle-switch {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.9rem;
+  color: #e0e0e0;
+}
+
+.toggle-switch input {
+  display: none;
+}
+
+.toggle-slider {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  background-color: #4a4a4a;
+  border-radius: 20px;
+  transition: all 0.3s;
+}
+
+.toggle-slider:before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  left: 2px;
+  top: 2px;
+  background-color: #fff;
+  transition: all 0.3s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background-color: #0e639c;
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(16px);
+}
+
+/* Cursor styles */
+canvas {
+  cursor: default;
+}
+
+canvas[style*="cursor: crosshair"] {
+  cursor: crosshair;
 }
