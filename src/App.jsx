@@ -9,6 +9,7 @@ function App() {
   const [selectedObject, setSelectedObject] = useState(null);
   const [objects, setObjects] = useState([]);
   const [gridSize, setGridSize] = useState(0.5);
+  const [gridVisible, setGridVisible] = useState(true);
   const [extrusionHeight, setExtrusionHeight] = useState(1.0);
   const sceneRef = useRef(null);
   const cameraRef = useRef(null);
@@ -146,8 +147,10 @@ function App() {
     };
 
     // Add grid helper
-    const gridHelper = new THREE.GridHelper(20, 20);
+    const gridHelper = new THREE.GridHelper(20, 20, 0x888888, 0x444444);
+    gridHelper.visible = gridVisible;
     scene.add(gridHelper);
+    sceneRef.current.gridHelper = gridHelper; // Store reference to update later
 
     // Add axes helper
     const axesHelper = new THREE.AxesHelper(5);
@@ -184,6 +187,30 @@ function App() {
       renderer.dispose();
     };
   }, []);
+
+  // Update grid visibility
+  useEffect(() => {
+    if (sceneRef.current?.gridHelper) {
+      sceneRef.current.gridHelper.visible = gridVisible;
+    }
+  }, [gridVisible]);
+
+  // Update grid size
+  useEffect(() => {
+    if (sceneRef.current?.gridHelper) {
+      const size = 20; // Keep the overall grid size
+      const divisions = Math.max(1, Math.round(size / gridSize));
+      
+      // Remove old grid
+      sceneRef.current.remove(sceneRef.current.gridHelper);
+      
+      // Create new grid with updated size
+      const newGridHelper = new THREE.GridHelper(size, divisions, 0x888888, 0x444444);
+      newGridHelper.visible = gridVisible;
+      sceneRef.current.add(newGridHelper);
+      sceneRef.current.gridHelper = newGridHelper;
+    }
+  }, [gridSize, gridVisible]);
 
   // Snap a value to the grid if snapToGrid is enabled
   const snapValue = (value) => {
@@ -631,6 +658,28 @@ function App() {
                   <span className="toggle-slider"></span>
                   <span>Snap to Grid</span>
                 </label>
+              </div>
+              <div className="toggle-container">
+                <label className="toggle-switch">
+                  <input 
+                    type="checkbox" 
+                    checked={gridVisible}
+                    onChange={(e) => setGridVisible(e.target.checked)}
+                  />
+                  <span className="toggle-slider"></span>
+                  <span>Show Grid</span>
+                </label>
+              </div>
+              <div className="grid-controls">
+                <label>Grid Size: {gridSize.toFixed(2)}</label>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="2"
+                  step="0.1"
+                  value={gridSize}
+                  onChange={(e) => setGridSize(parseFloat(e.target.value))}
+                />
               </div>
             </div>
           </div>
